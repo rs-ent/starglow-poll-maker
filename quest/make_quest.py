@@ -4,6 +4,9 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 import os
 os.environ["HF_HOME"] = r"G:\Cache"
 os.environ["TRANSFORMERS_CACHE"] = r"G:\Cache\transformers"
+os.environ["TMP"] = r"G:\Temp"
+os.environ["TEMP"] = r"G:\Temp"
+os.environ[".cacheggg"] = r"G:\Cache"
 
 
 def load_data(csv_path="groups_data_updated.csv"):
@@ -60,7 +63,8 @@ def build_prompt(group_A, group_B):
         members_B_str = members_B
         
         
-    prompt = f"""Please create an extremely creative, catchy, and exciting poll title in English that captures the dynamic showdown between the following two K-pop groups. The title should be engaging and intriguing to K-pop fans, highlighting each group's unique style, debut era, and competitive spirit.
+    prompt = f"""Use the following Group A and Group B data. Please create an catchy and exciting poll title in English that captures the dynamic showdown between these two K-pop groups. The title should highlight each group's unique style, debut era, and competitive spirit. Provide only the title, with no additional explanation or commentary.
+
 
 Group A:
 - Name: {group_A['group_name']}
@@ -80,24 +84,22 @@ Group B:
 - Gender: {group_B.get('gender', 'Not available')}
 - YouTube Subscribers: {group_B['youtube_subscribers']}
 
-For example, you could create titles like:
-"Empowered Queens vs. Daring Kings: Who Will Reign Supreme in K-pop?"
-"Clash of the Titans: Where New Wave Meets Timeless Talent!",
-"Rising Stars vs. Established Icons: The Ultimate K-pop Showdown!"
-
-Now, please generate a poll title that is original, dynamic, and perfectly captures this battle:"""
+For example, your output could be:
+"Rising Queens vs. Future Icons: K-pop Showdown!"""
     return prompt
 
-def generate_poll_title(prompt, model_name="gpt2", max_length=60, num_return_sequences=1):
+def generate_poll_title(prompt, model_name="EleutherAI/gpt-j-6B", max_new_tokens=60, num_return_sequences=1):
     """
     Hugging Face의 text-generation 파이프라인을 사용하여,
     프롬프트 기반의 Poll 제목을 생성합니다.
-    영어 GPT-2 모델("gpt2")을 사용합니다.
+    EleutherAI/gpt-j-6B 사용합니다.
     """
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name)
     text_generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
-    results = text_generator(prompt, max_length=max_length, num_return_sequences=num_return_sequences, do_sample=True)
+    results = text_generator(prompt, max_new_tokens=max_new_tokens, num_return_sequences=num_return_sequences, do_sample=True)
+    print("=========================RESULT=========================")
+    print(results)
     return results[0]["generated_text"]
   
 def generate_poll_options(group_A, group_B):
