@@ -1,25 +1,31 @@
-import pandas as pd
-import random
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+##### starglow-poll-maker\quest\make_quest.py #####
+
 import os
-os.environ["HF_HOME"] = r"G:\Cache"
-os.environ["TRANSFORMERS_CACHE"] = r"G:\Cache\transformers"
-os.environ["TMP"] = r"G:\Temp"
-os.environ["TEMP"] = r"G:\Temp"
-os.environ[".cacheggg"] = r"G:\Cache"
+from openai import OpenAI
+import pandas as pd
+from dotenv import load_dotenv
+
+load_dotenv()
+client = OpenAI(
+  api_key=os.environ['OPENAI'],  # this is also the default, it can be omitted
+)
 
 
 def load_data(csv_path="groups_data_updated.csv"):
-    # CSV 데이터 불러오기 및 전처리: youtube_subscribers가 0보다 큰 그룹만 사용
     df = pd.read_csv(csv_path)
     df = df.dropna(subset=["youtube_subscribers"])
     df["youtube_subscribers"] = df["youtube_subscribers"].astype(int)
-    df = df[df["youtube_subscribers"] > 0]
+    df = df[df["youtube_subscribers"] > 0] # 구독자 수가 0보다 큰 데이터만 사용
+    df = df[df["image"].notna() & (df["image"] != "")] # 이미지가 있는 데이터만 사용
+
+    for col in ["genres", "debut", "disbanded"]:
+        df[col] = df[col].fillna("Not available")
+
     return df
 
 def select_two_groups(df):
     """
-    그룹 A를 무작위로 선택한 후,
+    그룹 A를 무작위로 선택한 후,c
     그룹 A의 youtube_subscribers 값과 ±10% 범위 내에서 그룹 B를 선택합니다.
     조건에 맞는 그룹이 없으면, 구독자 차이가 가장 적은 상위 5개 중 랜덤 선택합니다.
     """
@@ -63,8 +69,13 @@ def build_prompt(group_A, group_B):
         members_B_str = members_B
         
         
-    prompt = f"""Use the following Group A and Group B data. Please create an catchy and exciting poll title in English that captures the dynamic showdown between these two K-pop groups. The title should highlight each group's unique style, debut era, and competitive spirit. Provide only the title, with no additional explanation or commentary.
-
+    prompt = f"""Use the following Group A and Group B data. 
+Please create a catchy and exciting poll title in English that captures the dynamic showdown between these two K-pop groups.
+The title should highlight each group's unique characteristics and debut era, while presenting both their similarities and differences.
+Adjust the intensity of expressions based on their YouTube subscribers count.
+Avoid using terms like "newbies" unless both groups debuted in 2024 or later.
+The title must be provocative yet respectful to the fandom, and no more than 50 characters.
+Provide only the title, with no additional explanation or commentary.
 
 Group A:
 - Name: {group_A['group_name']}
@@ -82,25 +93,13 @@ Group B:
 - Disbanded: {group_B.get('disbanded', 'Currently active. Not disbanded.')}
 - Members: {members_B_str}
 - Gender: {group_B.get('gender', 'Not available')}
-- YouTube Subscribers: {group_B['youtube_subscribers']}
-
-For example, your output could be:
-"Rising Queens vs. Future Icons: K-pop Showdown!"""
+- YouTube Subscribers: {group_B['youtube_subscribers']}"""
+    
     return prompt
 
-def generate_poll_title(prompt, model_name="EleutherAI/gpt-j-6B", max_new_tokens=60, num_return_sequences=1):
-    """
-    Hugging Face의 text-generation 파이프라인을 사용하여,
-    프롬프트 기반의 Poll 제목을 생성합니다.
-    EleutherAI/gpt-j-6B 사용합니다.
-    """
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(model_name)
-    text_generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
-    results = text_generator(prompt, max_new_tokens=max_new_tokens, num_return_sequences=num_return_sequences, do_sample=True)
-    print("=========================RESULT=========================")
-    print(results)
-    return results[0]["generated_text"]
+def generate_poll_title(prompt):
+    completion = client.completions.create(model='gpt-3.5-turbo-instruct', prompt=prompt, max_tokens=60, temperature=0.7)
+    return completion.choices[0].text.strip()
   
 def generate_poll_options(group_A, group_B):
     """
@@ -125,26 +124,19 @@ def generate_poll_options(group_A, group_B):
     return options
 
 def main():
-    # 1. CSV 파일에서 데이터 불러오기
     df = load_data("groups_data_updated.csv")
-    
-    # 2. 조건에 맞는 두 그룹 선택
     group_A, group_B = select_two_groups(df)
-    
-    # 3. 프롬프트 생성 (두 그룹의 모든 유효 데이터를 포함)
     prompt = build_prompt(group_A, group_B)
     print("=== Prompt ===")
     print(prompt)
-    
-    # 4. GPT-2를 사용하여 Poll 제목 생성
+
     poll_title = generate_poll_title(prompt)
     print("\n=== Generated Poll Title ===")
     print(poll_title)
-    
+
     poll_options = generate_poll_options(group_A, group_B)
     print("\n=== Generated Poll Options ===")
     print(poll_options)
-    
 
 if __name__ == "__main__":
     main()

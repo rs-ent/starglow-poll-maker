@@ -1,8 +1,8 @@
 ##### main.py #####
 
 import pandas as pd
-from crawler.group_crawler import groups_from_urls
-from crawler.get_data import get_individual_data
+from group_crawler import groups_from_urls
+from get_data import get_individual_data
 
 def get_data(groups):
     results = []
