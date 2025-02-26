@@ -12,7 +12,8 @@ def load_data(csv_path='groups_data_updated.csv'):
     df['youtube_subscribers'] = df['youtube_subscribers'].astype(int)
     df = df[df['youtube_subscribers'] > 0]
     df = df[df['image'].notna() & (df['image'] != '')]
-    for col in ['genres', 'debut', 'disbanded']:
+    df = df[df['disbanded'].isna() == True]
+    for col in ['genres', 'debut']:
         df[col] = df[col].fillna('Not available')
     return df
 
@@ -32,6 +33,26 @@ def select_two_groups(df):
         similar_df = df_noA.sort_values(by='diff').head(5)
     group_B = similar_df.sample(n=1).iloc[0]
     return (group_A, group_B)
+
+def reselect_group(df, fixed_group):
+    """
+    fixed_group의 youtube_subscribers를 기준으로 ±10% 범위 내에서
+    새로운 그룹을 선택합니다.
+    만약 해당 범위 내 후보가 없다면, 구독자 차이가 가장 적은 상위 5개 후보 중 랜덤 선택합니다.
+    """
+    target_subscribers = fixed_group['youtube_subscribers']
+    threshold = 0.1 * target_subscribers
+    # 고정 그룹과 다른 그룹들만 후보로 선정
+    candidates = df[df['group_name'] != fixed_group['group_name']]
+    similar_candidates = candidates[
+        (candidates['youtube_subscribers'] >= target_subscribers - threshold) &
+        (candidates['youtube_subscribers'] <= target_subscribers + threshold)
+    ]
+    if similar_candidates.empty:
+        candidates = candidates.copy()
+        candidates['diff'] = (candidates['youtube_subscribers'] - target_subscribers).abs()
+        similar_candidates = candidates.sort_values('diff').head(5)
+    return similar_candidates.sample(n=1).iloc[0]
 
 def row_to_dict(row):
     dict_full = row.to_dict()

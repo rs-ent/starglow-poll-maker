@@ -1,5 +1,5 @@
 import streamlit as st
-from quest.make_quest import load_data, select_two_groups, build_prompt, generate_poll_title, generate_poll_options
+from quest.make_quest import load_data, select_two_groups, reselect_group, build_prompt, generate_poll_title, generate_poll_options
 from image.combine import make_image
 from image.upload import upload_image
 from sns.link import link_picker
@@ -55,6 +55,7 @@ def main():
     if st.button("Select Two Groups"):
         st.session_state.confirmed = False
         data = load_data("groups_data_updated.csv")
+        st.session_state.data = data
         group_A, group_B = select_two_groups(data)
         st.session_state.groups = (group_A, group_B)
         st.session_state.groups_selected = True
@@ -64,6 +65,7 @@ def main():
         group_A, group_B = st.session_state.groups
         st.subheader("Selected Groups")
         col1, col2 = st.columns(2)
+        data = st.session_state.data
 
         with col1:
             response_A = requests.get(group_A["image"].split("/scale-to-width-down")[0])
@@ -80,6 +82,11 @@ def main():
                 st.write("Failed to load image for Group A.")
             st.write("**Group A:**", {k: str(v) for k, v in group_A.items()})
 
+            if st.button("Change Group A"):
+                fixed_group = st.session_state.groups[1]
+                new_group_A = reselect_group(data, fixed_group)
+                st.session_state.groups = (new_group_A, fixed_group)
+
         with col2:
             response_B = requests.get(group_B["image"].split("/scale-to-width-down")[0])
             if response_B.status_code == 200:
@@ -94,6 +101,10 @@ def main():
             else:
                 st.write("Failed to load image for Group B.")
             st.write("**Group B:**", {k: str(v) for k, v in group_B.items()})
+            if st.button("Change Group B"):
+                fixed_group = st.session_state.groups[0]
+                new_group_B = reselect_group(data, fixed_group)
+                st.session_state.groups = (fixed_group, new_group_B)
 
         # Step 2: Confirmation 버튼은 그룹 선택 후 항상 표시되도록 분리
         if not st.session_state.confirmed:
@@ -118,6 +129,44 @@ def main():
             st.write(st.session_state.prompt)
             st.write("Prompt sent to GPT-3 for completion.")
             poll_title = generate_poll_title(prompt)
+            poll_options = generate_poll_options(group_A, group_B)
+            st.session_state.poll_title = poll_title
+            st.session_state.poll_options = poll_options
+
+            st.subheader("Generated Poll")
+            st.subheader("**Title:**")
+            st.subheader(poll_title)
+            
+            st.write("**Options:**", poll_options)
+
+            col1, col2 = st.columns(2)
+
+            # Further steps: creating blended image, uploading, SNS links, etc.
+            image_path = make_image(group_A["image"], group_B["image"])
+            image_url = upload_image(image_path, "blended_image.png")
+            st.session_state.image_url = image_url
+            sns_A = link_picker(group_A)
+            st.session_state.sns_A = sns_A
+            sns_B = link_picker(group_B)
+            st.session_state.sns_B = sns_B
+
+            response_Blend = requests.get(image_url)
+            if response_B.status_code == 200:
+                img_Blend = Image.open(BytesIO(response_Blend.content))
+            st.image(img_Blend, width=500)
+            st.write(image_url)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"**SNS Link for {poll_options[0]}:**", sns_A)
+            with col2:
+                st.write(f"**SNS Link for {poll_options[1]}:**", sns_B)
+
+        if st.button("Skip and Manually Input"):
+            prompt = st.session_state.prompt
+            st.subheader("Prompt")
+            st.write(st.session_state.prompt)
+            poll_title = st.text_input("Poll Title", value="")
             poll_options = generate_poll_options(group_A, group_B)
             st.session_state.poll_title = poll_title
             st.session_state.poll_options = poll_options
