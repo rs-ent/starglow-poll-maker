@@ -302,7 +302,7 @@ def append_data_modify_step():
                 # Quest 항목 준비
                 poll_number = poll_id.replace("p", "")
                 date_start = start.split()[0] if start else ""
-                song_titles = [s.strip() for s in title.split(";")]
+                song_titles = [s.strip() for s in song_title.split(";")]
                 first_song_title = song_titles[0] if len(song_titles) > 0 else ""
                 second_song_title = song_titles[1] if len(song_titles) > 1 else ""
 
