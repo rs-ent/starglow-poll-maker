@@ -1,5 +1,5 @@
 import streamlit as st
-from quest.make_quest import load_data, select_two_groups, reselect_group, build_prompt, generate_poll_title, generate_poll_options
+from quest.make_quest import load_data, select_two_groups_random, count_groups_with_min_subscribers, select_groups_with_min_subscribers, search_groups, select_groups_by_search, reselect_group, build_prompt, generate_poll_title, generate_poll_options
 from image.combine import make_image
 from image.upload import upload_image
 from sns.link import link_picker
@@ -74,65 +74,118 @@ def display_sidebar():
             del st.session_state[key]
         st.experimental_rerun()
 
-# Step 1: 그룹 선택
 def group_selection():
-    if st.button("Select Two Groups"):
-        st.session_state.confirmed = False
-        data = load_data("groups_data_updated.csv")
-        st.session_state.data = data
-        group_A, group_B = select_two_groups(data)
+    st.subheader("Step 1: 그룹 선택 방법")
+    data = load_data("groups_data_updated.csv")
+    st.session_state.data = data
+
+    # 세션 상태 초기화
+    for key in ["groups_selected", "groups", "confirmed"]:
+        if key not in st.session_state:
+            st.session_state[key] = None if key == "groups" else False
+
+    # 공통 유틸리티 함수
+    def select_similar_group(df, group, threshold=0.5):
+        subscribers = group['youtube_subscribers']
+        range_min = subscribers * (1 - threshold)
+        range_max = subscribers * (1 + threshold)
+        similar_df = df[
+            (df['youtube_subscribers'] >= range_min) &
+            (df['youtube_subscribers'] <= range_max) &
+            (df['group_name'] != group['group_name'])
+        ]
+        if similar_df.empty:
+            df_no_group = df[df['group_name'] != group['group_name']].copy()
+            df_no_group['diff'] = (df_no_group['youtube_subscribers'] - subscribers).abs()
+            similar_df = df_no_group.sort_values(by='diff').head(5)
+        return similar_df.sample(n=1).iloc[0]
+
+    # 1️⃣ 랜덤 방식
+    st.markdown("**① 랜덤 그룹 선택**")
+    if st.button("Select Random Groups"):
+        group_A = data.sample(n=1).iloc[0]
+        group_B = select_similar_group(data, group_A)
         st.session_state.groups = (group_A, group_B)
         st.session_state.groups_selected = True
+        st.session_state.confirmed = False
 
-# Step 2: 선택된 그룹 표시 및 변경
+    st.divider()
+
+    # 2️⃣ 최소 구독자 조건 방식
+    st.markdown("**② 최소 구독자 수로 선택**")
+    min_subs = st.slider("최소 Youtube 구독자 수", 0, int(data['youtube_subscribers'].max()), step=1000)
+    matching_count = len(data[data['youtube_subscribers'] >= min_subs])
+    st.write(f"조건을 만족하는 그룹 수: **{matching_count}개**")
+    if st.button("Select Groups with Min Subscribers"):
+        df_filtered = data[data['youtube_subscribers'] >= min_subs]
+        if df_filtered.empty:
+            st.error("조건을 만족하는 그룹이 없습니다.")
+        else:
+            group_A = df_filtered.sample(n=1).iloc[0]
+            group_B = select_similar_group(df_filtered, group_A)
+            st.session_state.groups = (group_A, group_B)
+            st.session_state.groups_selected = True
+            st.session_state.confirmed = False
+
+    st.divider()
+
+    # 3️⃣ 검색을 통한 그룹 선택
+    st.markdown("**③ 그룹 이름 검색으로 선택**")
+    keyword = st.text_input("Search Group Name")
+    search_results = data[data['group_name'].str.contains(keyword, case=False, na=False)]
+    if not search_results.empty and keyword:
+        selected_name = st.selectbox("검색된 그룹 선택:", search_results['group_name'].tolist())
+        if st.button("Select Searched Group"):
+            group_A = data[data['group_name'] == selected_name].iloc[0]
+            group_B = select_similar_group(data, group_A)
+            st.session_state.groups = (group_A, group_B)
+            st.session_state.groups_selected = True
+            st.session_state.confirmed = False
+    elif keyword:
+        st.write("검색된 그룹이 없습니다.")
+
+
 def display_groups():
     if st.session_state.groups_selected and st.session_state.groups:
         group_A, group_B = st.session_state.groups
         st.subheader("Selected Groups")
+
         col1, col2 = st.columns(2)
-        data = st.session_state.data
 
         with col1:
             response_A = requests.get(group_A["image"].split("/scale-to-width-down")[0])
             if response_A.status_code == 200:
                 img_A = Image.open(BytesIO(response_A.content))
-                img_A_base64 = pil_to_base64(img_A)
-                container_html_A = f"""
-                    <div style="width:350px; height:350px; overflow:hidden;">
-                        <img src="data:image/png;base64,{img_A_base64}" style="width:100%; height:100%; object-fit:cover;">
-                    </div>
-                    """
-                st.markdown(container_html_A, unsafe_allow_html=True)
+                st.image(img_A, width=350)
             else:
-                st.write("Failed to load image for Group A.")
-            st.write("**Group A:**", {k: str(v) for k, v in group_A.items()})
+                st.error("Failed to load image for Group A.")
+            st.write(f"**Group A:** {group_A['group_name']}")
+            st.write(f"**Subscribers:** {group_A['youtube_subscribers']:,}")
+
             if st.button("Change Group A"):
-                fixed_group = st.session_state.groups[1]
-                new_group_A = reselect_group(data, fixed_group)
-                st.session_state.groups = (new_group_A, fixed_group)
+                new_group_A = reselect_group(st.session_state.data, group_B)
+                st.session_state.groups = (new_group_A, group_B)
+                st.session_state.confirmed = False
 
         with col2:
             response_B = requests.get(group_B["image"].split("/scale-to-width-down")[0])
             if response_B.status_code == 200:
                 img_B = Image.open(BytesIO(response_B.content))
-                img_B_base64 = pil_to_base64(img_B)
-                container_html_B = f"""
-                    <div style="width:350px; height:350px; overflow:hidden;">
-                        <img src="data:image/png;base64,{img_B_base64}" style="width:100%; height:100%; object-fit:cover;">
-                    </div>
-                    """
-                st.markdown(container_html_B, unsafe_allow_html=True)
+                st.image(img_B, width=350)
             else:
-                st.write("Failed to load image for Group B.")
-            st.write("**Group B:**", {k: str(v) for k, v in group_B.items()})
-            if st.button("Change Group B"):
-                fixed_group = st.session_state.groups[0]
-                new_group_B = reselect_group(data, fixed_group)
-                st.session_state.groups = (fixed_group, new_group_B)
+                st.error("Failed to load image for Group B.")
+            st.write(f"**Group B:** {group_B['group_name']}")
+            st.write(f"**Subscribers:** {group_B['youtube_subscribers']:,}")
 
-        # 그룹 선택 후 확정 버튼
-        if not st.session_state.confirmed and st.button("Confirm"):
+            if st.button("Change Group B"):
+                new_group_B = reselect_group(st.session_state.data, group_A)
+                st.session_state.groups = (group_A, new_group_B)
+                st.session_state.confirmed = False
+
+        if not st.session_state.confirmed and st.button("Confirm Selection"):
             st.session_state.confirmed = True
+            st.success("Groups confirmed!")
+
 
 # Step 3: 프롬프트 생성
 def build_prompt_step():
@@ -151,8 +204,6 @@ def ask_to_gpt_step():
         group_A, group_B = st.session_state.groups
         if st.button("Ask to GPT"):
             prompt = st.session_state.prompt
-            st.subheader("Prompt")
-            st.write(prompt)
             st.write("Prompt sent to GPT-3 for completion.")
             poll_title = generate_poll_title(prompt)
             poll_options = generate_poll_options(group_A, group_B)
@@ -192,8 +243,6 @@ def manual_input_step():
         st.session_state.manual_input = True
 
     if st.session_state.manual_input:
-        st.subheader("Prompt")
-        st.write(st.session_state.prompt)
         with st.form("manual_poll_form"):
             poll_title_input = st.text_input("Poll Title", value=st.session_state.poll_title or "")
             poll_options = generate_poll_options(group_A, group_B)  # 옵션은 자동 생성

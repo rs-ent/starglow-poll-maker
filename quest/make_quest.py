@@ -6,6 +6,21 @@ from dotenv import load_dotenv
 load_dotenv()
 client = OpenAI(api_key=os.environ['OPENAI'])
 
+def select_similar_group(df, group, threshold=0.1):
+    subscribers = group['youtube_subscribers']
+    range_min = subscribers * (1 - threshold)
+    range_max = subscribers * (1 + threshold)
+    similar_df = df[
+        (df['youtube_subscribers'] >= range_min) &
+        (df['youtube_subscribers'] <= range_max) &
+        (df['group_name'] != group['group_name'])
+    ]
+    if similar_df.empty:
+        df_no_group = df[df['group_name'] != group['group_name']].copy()
+        df_no_group['diff'] = (df_no_group['youtube_subscribers'] - subscribers).abs()
+        similar_df = df_no_group.sort_values(by='diff').head(5)
+    return similar_df.sample(n=1).iloc[0]
+
 def load_data(csv_path='groups_data_updated.csv'):
     df = pd.read_csv(csv_path)
     df = df.dropna(subset=['youtube_subscribers'])
@@ -17,22 +32,34 @@ def load_data(csv_path='groups_data_updated.csv'):
         df[col] = df[col].fillna('Not available')
     return df
 
-def select_two_groups(df):
-    """
-    그룹 A를 무작위로 선택한 후,c
-    그룹 A의 youtube_subscribers 값과 ±10% 범위 내에서 그룹 B를 선택합니다.
-    조건에 맞는 그룹이 없으면, 구독자 차이가 가장 적은 상위 5개 중 랜덤 선택합니다.
-    """
+def select_two_groups_random(df):
     group_A = df.sample(n=1).iloc[0]
-    subscribers_A = group_A['youtube_subscribers']
-    threshold = 0.1 * subscribers_A
-    similar_df = df[(df['youtube_subscribers'] >= subscribers_A - threshold) & (df['youtube_subscribers'] <= subscribers_A + threshold) & (df['group_name'] != group_A['group_name'])]
-    if similar_df.empty:
-        df_noA = df[df['group_name'] != group_A['group_name']].copy()
-        df_noA['diff'] = (df_noA['youtube_subscribers'] - subscribers_A).abs()
-        similar_df = df_noA.sort_values(by='diff').head(5)
-    group_B = similar_df.sample(n=1).iloc[0]
-    return (group_A, group_B)
+    group_B = select_similar_group(df, group_A)
+    return group_A, group_B
+
+def select_groups_with_min_subscribers(df, min_subscribers, threshold=0.1):
+    df_filtered = df[df['youtube_subscribers'] >= min_subscribers]
+    if df_filtered.empty:
+        raise ValueError("No groups meet the minimum subscriber requirement.")
+
+    group_A = df_filtered.sample(n=1).iloc[0]
+    group_B = select_similar_group(df_filtered, group_A, threshold)
+    return group_A, group_B
+
+def count_groups_with_min_subscribers(df, min_subscribers):
+    return len(df[df['youtube_subscribers'] >= min_subscribers])
+
+def search_groups(df, keyword):
+    return df[df['group_name'].str.contains(keyword, case=False, na=False)]
+
+def select_groups_by_search(df, selected_group_name, threshold=0.1):
+    matched_groups = df[df['group_name'] == selected_group_name]
+    if matched_groups.empty:
+        raise ValueError("Selected group not found.")
+    
+    group_A = matched_groups.iloc[0]
+    group_B = select_similar_group(df, group_A, threshold)
+    return group_A, group_B
 
 def reselect_group(df, fixed_group):
     """
@@ -60,20 +87,40 @@ def row_to_dict(row):
 
 def build_prompt(group_A, group_B):
     """
-    두 그룹의 주요 정보를 포함하는 영어 프롬프트를 생성하여,
+    두 그룹의 모든 정보를 포함하는 영어 프롬프트를 생성하여,
     LLM에게 창의적이고 다채로운 투표 제목 생성을 요청합니다.
     """
-    members_A = group_A.get('members_current', [])
-    if isinstance(members_A, list):
-        members_A_str = ', '.join(members_A) if members_A else 'Not available'
-    else:
-        members_A_str = members_A
-    members_B = group_B.get('members_current', [])
-    if isinstance(members_B, list):
-        members_B_str = ', '.join(members_B) if members_B else 'Not available'
-    else:
-        members_B_str = members_B
-    prompt = f"""Use the following Group A and Group B data. \nPlease create a catchy and exciting poll title in English that captures the dynamic showdown between these two K-pop groups.\nThe title should highlight each group's unique characteristics and debut era, while presenting both their similarities and differences.\nAdjust the intensity of expressions based on their YouTube subscribers count.\nAvoid using terms like "newbies" unless both groups debuted in 2024 or later.\nThe title must be provocative yet respectful to the fandom, and no more than 50 characters.\nProvide only the title, with no additional explanation or commentary.\n\nGroup A:\n- Name: {group_A['group_name']}\n- Genre: {group_A.get('genres', 'Not available')}\n- Debut: {group_A.get('debut', 'Not available')}\n- Disbanded: {group_A.get('disbanded', 'Currently active. Not disbanded.')}\n- Members: {members_A_str}\n- Gender: {group_A.get('gender', 'Not available')}\n- YouTube Subscribers: {group_A['youtube_subscribers']}\n\nGroup B:\n- Name: {group_B['group_name']}\n- Genre: {group_B.get('genres', 'Not available')}\n- Members: {members_B_str}\n- Gender: {group_B.get('gender', 'Not available')}\n- YouTube Subscribers: {group_B['youtube_subscribers']}"""
+    def format_group_info(group, group_label):
+        info = []
+        for key, value in group.items():
+            if isinstance(value, list):
+                value_str = ', '.join(value) if value else "Not available"
+            else:
+                value_str = value if value else "Not available"
+            info.append(f"- {key.replace('_', ' ').title()}: {value_str}")
+        return f"{group_label}:\n" + "\n".join(info)
+
+    group_A_info = format_group_info(group_A, "Group A")
+    group_B_info = format_group_info(group_B, "Group B")
+
+    prompt = f"""Use the following detailed information about Group A and Group B.
+
+{group_A_info}
+
+{group_B_info}
+
+Please create a catchy and exciting poll title in English that captures the dynamic showdown between these two K-pop groups.
+
+The title should:
+- Highlight each group's unique characteristics and debut era.
+- Reflect both similarities and differences between the groups.
+- Adjust intensity based on their YouTube subscribers count.
+- Avoid terms like "newbies" unless both groups debuted in 2024 or later.
+- Be provocative yet respectful to the fandom.
+- Not exceed 50 characters.
+
+Provide only the title without any additional explanation."""
+    
     return prompt
 
 def generate_poll_title(prompt):
@@ -96,18 +143,3 @@ def generate_poll_options(group_A, group_B):
         b_option = b_name.split(' (')[0]
         options.append(b_option)
     return options
-
-def main():
-    df = load_data('groups_data_updated.csv')
-    group_A, group_B = select_two_groups(df)
-    prompt = build_prompt(group_A, group_B)
-    print('=== Prompt ===')
-    print(prompt)
-    poll_title = generate_poll_title(prompt)
-    print('\n=== Generated Poll Title ===')
-    print(poll_title)
-    poll_options = generate_poll_options(group_A, group_B)
-    print('\n=== Generated Poll Options ===')
-    print(poll_options)
-if __name__ == '__main__':
-    main()
