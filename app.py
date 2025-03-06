@@ -390,7 +390,7 @@ def append_data_modify_step():
                         "Tags": "",
                         "Quest Title": f"[POLL#{poll_number}] {title}",
                         "Description": "폴 참여 링크",
-                        "URL or Condition": f"https://starglow-protocol.vercel.app/polls/{poll_id}",
+                        "URL or Condition": f"https://starglow.io/polls/{poll_id}",
                         "Reward": "Point",
                         "Amount": "800"
                     },
