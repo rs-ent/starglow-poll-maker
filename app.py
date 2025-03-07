@@ -3,6 +3,7 @@ from quest.make_quest import load_data, select_two_groups_random, count_groups_w
 from image.combine import make_image
 from image.upload import upload_image
 from sns.link import link_picker
+from sns.youtube import get_playlist, get_random_track_from_playlist
 from sheets.append_poll import append_new_poll
 from sheets.finder import find_latest_poll_id
 from sheets.append_quest import append_new_quests
@@ -100,7 +101,7 @@ def group_selection():
             similar_df = df_no_group.sort_values(by='diff').head(5)
         return similar_df.sample(n=1).iloc[0]
 
-    # 1️⃣ 랜덤 방식
+    # 랜덤 방식
     st.markdown("**① 랜덤 그룹 선택**")
     if st.button("Select Random Groups"):
         group_A = data.sample(n=1).iloc[0]
@@ -111,7 +112,7 @@ def group_selection():
 
     st.divider()
 
-    # 2️⃣ 최소 구독자 조건 방식
+    # 최소 구독자 조건 방식
     st.markdown("**② 최소 구독자 수로 선택**")
     min_subs = st.slider("최소 Youtube 구독자 수", 0, int(data['youtube_subscribers'].max()), step=1000)
     matching_count = len(data[data['youtube_subscribers'] >= min_subs])
@@ -129,7 +130,7 @@ def group_selection():
 
     st.divider()
 
-    # 3️⃣ 검색을 통한 그룹 선택
+    # 검색을 통한 그룹 선택
     st.markdown("**③ 그룹 이름 검색으로 선택**")
     keyword = st.text_input("Search Group Name")
     search_results = data[data['group_name'].str.contains(keyword, case=False, na=False)]
@@ -144,10 +145,25 @@ def group_selection():
     elif keyword:
         st.write("검색된 그룹이 없습니다.")
 
+    st.divider()
+
+    # 유튜브 플레이리스트에서 선택
+    st.markdown("**④ 유튜브 플레이리스트에서 선택**")
+    playlist_id = st.text_input("Youtube Playlist ID", value="PL4fGSI1pDJn5S09aId3dUGp40ygUqmPGc")
+    if st.button("Select Groups from Playlist"):
+        tracks = get_playlist(playlist_id)
+        st.session_state.tracks = tracks
+        data = st.session_state.data
+        group_A = get_random_track_from_playlist(data, tracks)
+        group_B = get_random_track_from_playlist(data, tracks)
+        st.session_state.groups = (group_A, group_B)
+        st.session_state.groups_selected = True
+        st.session_state.confirmed = False
 
 def display_groups():
     if st.session_state.groups_selected and st.session_state.groups:
         group_A, group_B = st.session_state.groups
+        print(group_A)
         st.subheader("Selected Groups")
 
         col1, col2 = st.columns(2)
@@ -290,6 +306,9 @@ def append_data_modify_step():
         default_start = st.session_state.latest_row.get("start", "")
         default_end = st.session_state.latest_row.get("end", "")
 
+        group_A = st.session_state.groups[0]
+        group_B = st.session_state.groups[1]
+
         with st.form("append_data_form"):
             artist_A = st.session_state.poll_options[0]
             artist_B = st.session_state.poll_options[1]
@@ -299,11 +318,11 @@ def append_data_modify_step():
             options_str = st.text_input("Options", value=";".join(st.session_state.poll_options))
             options_shorten = st.text_input("Options Shorten", value="")
             img = st.text_input("Image URL", value=st.session_state.image_url)
-            song_title_for_A = st.text_input(f"Song Title for {artist_A}", value="")
-            song_img_for_A = st.text_input(f"Song Image for {artist_A}", value="")
+            song_title_for_A = st.text_input(f"Song Title for {artist_A}", value=f"{group_A.get('song_title', '')}")
+            song_img_for_A = st.text_input(f"Song Image for {artist_A}", value=f"{group_A.get('song_thumbnail', '')}")
             song_link_for_A = st.text_input(f"Song Link for {artist_A}", value="")
-            song_title_for_B = st.text_input(f"Song Title for {artist_B}", value="")
-            song_img_for_B = st.text_input(f"Song Image for {artist_B}", value="")
+            song_title_for_B = st.text_input(f"Song Title for {artist_B}", value=f"{group_B.get('song_title', '')}")
+            song_img_for_B = st.text_input(f"Song Image for {artist_B}", value=f"{group_B.get('song_thumbnail', '')}")
             song_link_for_B = st.text_input(f"Song Link for {artist_B}", value="")
             start = st.text_input("Start", value=default_start)
             end = st.text_input("End", value=default_end)
