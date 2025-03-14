@@ -178,11 +178,17 @@ def group_selection():
         return available[available['group_name'] == selected_name].iloc[0]
 
     def select_by_playlist(df, playlist_id, exclude_group=None):
-        # 실제 구현에서는 get_playlist와 get_random_track_from_playlist를 활용하세요.
-        available = df.copy()
+        available_data = df.copy()
         if exclude_group is not None:
-            available = available[available['group_name'] != exclude_group['group_name']]
-        return available.sample(n=1).iloc[0]
+            available_data = available_data[available_data['group_name'] != exclude_group['group_name']]
+
+        tracks = get_playlist(playlist_id)
+        matched_info = get_random_track_from_playlist(available_data, tracks)
+        if matched_info is None:
+            raise ValueError("일치하는 그룹을 찾을 수 없습니다.")
+        
+        return matched_info
+    
 
     # 비슷한 그룹 선택 함수
     def select_similar_group(df, group, threshold=0.5):
@@ -250,12 +256,18 @@ def group_selection():
             st.success(f"Group A 선택됨: {st.session_state.group_A['group_name']}")
 
         if st.session_state.group_A is not None:        
-            response_A = requests.get(st.session_state.group_A["image"].split("/scale-to-width-down")[0])
+            current_image_A = st.session_state.group_A["image"]
+            response_A = requests.get(current_image_A.split("/scale-to-width-down")[0])
             if response_A.status_code == 200:
                 img_A = Image.open(BytesIO(response_A.content))
                 st.image(img_A, width=350)
             else:
                 st.error("Failed to load image for Group A.")
+
+            new_image_A = st.text_input("Replace Group A Image", key="replace_image_A", value=current_image_A)
+            if st.button("Replace Group A Image"):
+                st.session_state.group_A["image"] = new_image_A
+
             st.write(f"**Group A:** {st.session_state.group_A['group_name']}")
             st.write(f"**Subscribers:** {st.session_state.group_A['youtube_subscribers']:,}")
 
@@ -308,12 +320,19 @@ def group_selection():
             st.success(f"Group B 선택됨: {st.session_state.group_B['group_name']}")
 
         if st.session_state.group_B is not None:
-            response_B = requests.get(st.session_state.group_B["image"].split("/scale-to-width-down")[0])
+            current_image_B = st.session_state.group_B["image"]
+            response_B = requests.get(current_image_B.split("/scale-to-width-down")[0])
             if response_B.status_code == 200:
                 img_B = Image.open(BytesIO(response_B.content))
                 st.image(img_B, width=350)
             else:
                 st.error("Failed to load image for Group B.")
+            
+            new_image_B = st.text_input("Replace Group B Image", key="replace_image_B", value=current_image_B)
+            if st.button("Replace Group B Image"):
+                st.session_state.group_B["image"] = new_image_B
+                
+
             st.write(f"**Group B:** {st.session_state.group_B['group_name']}")
             st.write(f"**Subscribers:** {st.session_state.group_B['youtube_subscribers']:,}")
         
