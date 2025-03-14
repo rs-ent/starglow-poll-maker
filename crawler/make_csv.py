@@ -1,40 +1,101 @@
-##### main.py #####
+##### crawler\make_csv.py #####
 
 import pandas as pd
-from group_crawler import groups_from_urls
-from get_data import get_individual_data
+from crawler.group_crawler import groups_from_urls
+from crawler.get_data import get_individual_data
+import random
+import time
 
-def get_data(groups):
+def get_data(groups, batch_size=10):
     results = []
+    batch_count = 0
     for group in groups:
         link = group["link"]
-        group_name = group["group_name"]
+        group_name = group["group_name"].split(" (")[0]
         print(f"Processing {group_name} - {link}")
         data = get_individual_data(link)
         if data is None:
-            continue  # 개별 데이터를 가져오지 못하면 건너뜁니다.
-        # 원래 크롤링한 그룹 기본정보를 추가
+            continue
+        
+        data["name"] = group_name
         data["group_name"] = group_name
         data["link"] = link
         data["type"] = group.get("type", "")
         data["gender"] = group.get("gender", "")
+        
         results.append(data)
+        time.sleep(random.uniform(0.1, 0.8))
+        
+        batch_count += 1
+        if batch_count == batch_size:
+            df_batch = pd.DataFrame(results)
+            hashable_cols = ['group_name', 'link', 'gender', 'image']
+            df_batch.drop_duplicates(subset=hashable_cols)
+            df_batch.to_csv("groups_data.csv", index=False, encoding="utf-8-sig")
+            batch_count = 0
+
     return results
 
 def get_groups():
     boys_urls = [
-      "https://kpop.fandom.com/wiki/Category:Male_groups",
-      "https://kpop.fandom.com/wiki/Category:Male_groups?from=Forestella",
-      "https://kpop.fandom.com/wiki/Category:Male_groups?from=SHINHWA+%28group%29"
+        "https://kpop.fandom.com/wiki/Category:Male_groups",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=A",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=B",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=C",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=D",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=E",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=F",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=G",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=H",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=I",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=J",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=K",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=L",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=M",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=N",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=O",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=P",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=Q",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=R",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=S",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=T",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=U",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=V",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=W",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=X",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=Y",
+        "https://kpop.fandom.com/wiki/Category:Male_groups?from=Z"
     ]
     boygroups = groups_from_urls(boys_urls, "male")
     
     girls_urls = [
-      "https://kpop.fandom.com/wiki/Category:Female_groups",
-      "https://kpop.fandom.com/wiki/Category:Female_groups?from=CLEO+%28group%29",
-      "https://kpop.fandom.com/wiki/Category:Female_groups?from=IITERNITI",
-      "https://kpop.fandom.com/wiki/Category:Female_groups?from=Perfume+de+Ange",
-      "https://kpop.fandom.com/wiki/Category:Female_groups?from=UNICODE"
+        "https://kpop.fandom.com/wiki/Category:Female_groups",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=A",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=B",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=C",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=D",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=E",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=F",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=G",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=H",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=I",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=J",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=K",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=L",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=M",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=N",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=O",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=P",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=Q",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=R",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=S",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=T",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=U",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=V",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=W",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=X",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=Y",
+        "https://kpop.fandom.com/wiki/Category:Female_groups?from=Z"
     ]
     girlgroups = groups_from_urls(girls_urls, "female")
     
@@ -48,6 +109,8 @@ def get_groups():
     
     # DataFrame으로 변환
     df = pd.DataFrame(data_list)
+    hashable_cols = ['group_name', 'link', 'gender', 'image']
+    df = df.drop_duplicates(subset=hashable_cols)
     print("DataFrame 생성 완료. 일부 데이터 미리보기:")
     print(df.head())
     
@@ -56,7 +119,7 @@ def get_groups():
     df.to_csv(output_file, index=False, encoding="utf-8-sig")
     print(f"데이터가 {output_file} 파일로 저장되었습니다.")
     
-from sns.youtube import get_youtube_channel_id, get_youtube_stats, get_top_videos
+from sns.youtube import get_youtube_channel_ids_optimized, get_youtube_stats_batch
 import pandas as pd
 import ast
 from googleapiclient.discovery import build
@@ -71,22 +134,21 @@ def get_youtube():
     
     # 1. CSV 데이터 불러오기
     df = pd.read_csv("groups_data.csv")
-    updated_df = pd.read_csv("groups_data_updated.csv")
-    if not updated_df.empty:
-        df = updated_df
+    try:
+        updated_df = pd.read_csv("groups_data_updated.csv")
+        if not updated_df.empty:
+            df = updated_df
+    except Exception:
+        pass
     
     # 1-1. 필요한 컬럼이 없으면 생성 (이미 처리된 데이터인지 확인하기 위해)
-    if "youtube_data" not in df.columns:
-        df["youtube_data"] = None
-    if "youtube_subscribers" not in df.columns:
-        df["youtube_subscribers"] = None
-    if "youtube_videos" not in df.columns:
-        df["youtube_videos"] = None
+    for col in ["youtube_data", "youtube_subscribers", "youtube_videos"]:
+        if col not in df.columns:
+            df[col] = None
 
-    # 2. 'sns' 컬럼에서 리스트 데이터 추출 (문자열 형태이면 ast.literal_eval 사용)
+    # 2. 'sns' 컬럼에서 리스트 데이터 추출 (문자열이면 ast.literal_eval 사용)
     def parse_sns(sns_value):
         try:
-            # 예: "['https://www.instagram.com/andteam_official/', ...]"
             return ast.literal_eval(sns_value) if isinstance(sns_value, str) else sns_value
         except Exception:
             return []
@@ -102,32 +164,54 @@ def get_youtube():
         return None
     df["youtube_link"] = df["sns_parsed"].apply(extract_youtube_link)
 
-    # 4. YouTube 링크로부터 구독자 수와 상위 10개 동영상 정보 가져오기
-    def get_youtube_data(youtube_link):
-        if not youtube_link:
-            return {"subscribers": 0, "top_videos": []}
-        channel_id = get_youtube_channel_id(youtube, youtube_link)
-        if not channel_id:
-            return {"subscribers": 0, "top_videos": []}
-        subscribers = get_youtube_stats(youtube, channel_id)
-        top_videos = []
-        #top_videos = get_top_videos(youtube, channel_id, top_n=10)
-        return {"subscribers": subscribers, "top_videos": top_videos}
+    # 4. 처리할 행 필터링 (youtube_subscribers가 비어있거나 0인 경우)
+    to_process = df[(df["youtube_subscribers"].isna()) | (df["youtube_subscribers"] == 0)]
+    if to_process.empty:
+        print("모든 행이 이미 처리되었습니다.")
+        return
 
-    # 5. 각 행을 순차적으로 처리하고, 처리한 후 CSV 업데이트 (이미 처리된 행은 건너뜁니다)
-    for idx, row in df.iterrows():
-        # youtube_subscribers 값이 비어있거나 0인 경우에만 처리 (이미 업데이트된 행은 건너뛰기)
-        if pd.isna(row["youtube_subscribers"]) or row["youtube_subscribers"] == 0:
-            print(f"Processing row {idx}: {row['group_name']}")
-            data = get_youtube_data(row["youtube_link"])
-            df.at[idx, "youtube_data"] = data
-            df.at[idx, "youtube_subscribers"] = data.get("subscribers", 0)
-            df.at[idx, "youtube_videos"] = data.get("top_videos", [])
-            # 처리한 후 CSV 파일 업데이트 (중간에 중단되어도 처리된 내용은 저장됨)
-            df.to_csv("groups_data_updated.csv", index=False, encoding="utf-8-sig")
+    # 5. 배치 처리로 채널 ID 조회
+    youtube_links = to_process["youtube_link"].tolist()
+    channel_ids_mapping = get_youtube_channel_ids_optimized(youtube, youtube_links)
+
+    # 6. 배치 처리로 통계 정보 조회
+    # 유효한 채널 ID만 추출
+    valid_channel_ids = [cid for cid in channel_ids_mapping.values() if cid]
+    stats_mapping = get_youtube_stats_batch(youtube, valid_channel_ids)
+
+    # 7. DataFrame 업데이트
+    for idx in to_process.index:
+        link = df.at[idx, "youtube_link"]
+        if not link:
+            data = {"subscribers": 0, "viewCount": 0, "videoCount": 0}
         else:
-            print(f"Skipping row {idx}: {row['group_name']} already processed")
-    
+            channel_id = channel_ids_mapping.get(link)
+            # channel_id가 dict라면 문자열 채널 ID로 변환
+            if isinstance(channel_id, dict):
+                channel_id = channel_id.get("id")
+            if not channel_id:
+                data = {"subscribers": 0, "viewCount": 0, "videoCount": 0}
+            else:
+                stats = stats_mapping.get(channel_id, {"subscriberCount": 0, "viewCount": 0, "videoCount": 0})
+                data = {
+                    "subscribers": stats.get("subscriberCount", 0),
+                    "viewCount": stats.get("viewCount", 0),
+                    "videoCount": stats.get("videoCount", 0)
+                }
+        df.at[idx, "youtube_data"] = str(data)
+        df.at[idx, "youtube_subscribers"] = data.get("subscribers", 0)
+
+
+        # 그룹 이름이 "("를 포함하면 split하여 첫 부분만 사용
+        group_name = df.at[idx, "group_name"]
+        if " (" in group_name:
+            processed_name = group_name.split(" (")[0]
+            df.at[idx, "group_name"] = processed_name
+
+        # 중간 결과를 CSV에 저장 (실패 시에도 저장)
+        df.to_csv("groups_data_updated.csv", index=False, encoding="utf-8-sig")
+        print(f"Row {idx} processed: {df.at[idx, 'group_name']}")
+
     print("Processing complete.")
 
 def main():
@@ -135,3 +219,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    

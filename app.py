@@ -1,4 +1,7 @@
+##### app.py #####
+
 import streamlit as st
+from crawler.make_csv import get_groups, get_youtube
 from quest.make_quest import load_data, select_two_groups_random, count_groups_with_min_subscribers, select_groups_with_min_subscribers, search_groups, select_groups_by_search, reselect_group, build_prompt, generate_poll_title, generate_poll_options
 from image.combine import make_image
 from image.upload import upload_image
@@ -11,6 +14,29 @@ import requests
 from PIL import Image
 from io import BytesIO
 import base64
+import sys
+import time
+import altair as alt
+import pandas as pd
+
+log_placeholder = st.sidebar.empty()
+
+class StreamlitLogger:
+    def __init__(self):
+        self.log_buffer = ""
+        
+    def write(self, message):
+        # message가 공백이 아닌 경우에만 추가
+        if message.strip():
+            self.log_buffer += message + "\n"
+            log_placeholder.markdown(f"""
+            <div style="height:200px; overflow-y: scroll; border:1px solid #ccc; padding: 10px;">
+                <pre style="margin: 0;">{self.log_buffer}</pre>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    def flush(self):
+        pass
 
 # 이미지 PIL 객체를 base64 문자열로 변환
 def pil_to_base64(img):
@@ -74,18 +100,91 @@ def display_sidebar():
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.experimental_rerun()
+    
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("로그")
+    
+    # 버퍼 초기화 버튼
+    if st.sidebar.button("버퍼 초기화"):
+        sys.stdout.log_buffer = ""
+        log_placeholder.empty()
+        print("로그 버퍼가 초기화되었습니다.")
+
+def group_listup():
+    st.subheader("Step 0: 그룹 데이터 업데이트")
+    
+    if st.button("그룹 데이터 업데이트 실행"):
+        with st.spinner("그룹 리스트 초기화 중 (groups_data.csv 업데이트)..."):
+            get_groups()
+        st.success("그룹 리스트 초기화 완료.")
+        groups_data_df = pd.read_csv("groups_data.csv")
+        groups_data_csv = groups_data_df.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="그룹 리스트",
+            data=groups_data_csv,
+            file_name="groups_data.csv",
+            mime="text/csv"
+        )
+
+    if st.button("그룹 데이터 유튜브 구독자 업데이트 실행"):
+        with st.spinner("유튜브 구독자 정보 업데이트 중 (groups_data_updated.csv 업데이트)..."):
+            get_youtube()
+        st.success("유튜브 구독자 정보 업데이트 완료.")
+        groups_data_updated_df = pd.read_csv("groups_data_updated.csv")
+        groups_data_updated_csv = groups_data_updated_df.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="그룹 리스트",
+            data=groups_data_updated_csv,
+            file_name="groups_data_updated.csv",
+            mime="text/csv"
+        )
+        
+        st.success("Step 0 완료.")
 
 def group_selection():
     st.subheader("Step 1: 그룹 선택 방법")
     data = load_data("groups_data_updated.csv")
     st.session_state.data = data
 
-    # 세션 상태 초기화
-    for key in ["groups_selected", "groups", "confirmed"]:
-        if key not in st.session_state:
-            st.session_state[key] = None if key == "groups" else False
+    # 세션 상태 초기화 (기존 그룹 선택 변수 대신 개별 변수 사용)
+    if 'group_A' not in st.session_state:
+        st.session_state.group_A = None
+    if 'group_B' not in st.session_state:
+        st.session_state.group_B = None
 
-    # 공통 유틸리티 함수
+    ####################################
+    # 공통 선택 유틸리티 함수 정의
+    ####################################
+    def select_random_group(df, exclude_group=None):
+        available = df.copy()
+        if exclude_group is not None:
+            available = available[available['group_name'] != exclude_group['group_name']]
+        return available.sample(n=1).iloc[0]
+
+    def select_by_min_sub(df, min_sub, exclude_group=None):
+        available = df[df['youtube_subscribers'] >= min_sub]
+        if exclude_group is not None:
+            available = available[available['group_name'] != exclude_group['group_name']]
+        if available.empty:
+            return None
+        return available.sample(n=1).iloc[0]
+
+    def select_by_search(df, keyword, selected_name, exclude_group=None):
+        available = df[df['group_name'].str.contains(keyword, case=False, na=False)]
+        if exclude_group is not None:
+            available = available[available['group_name'] != exclude_group['group_name']]
+        if available.empty or selected_name not in available['group_name'].values:
+            return None
+        return available[available['group_name'] == selected_name].iloc[0]
+
+    def select_by_playlist(df, playlist_id, exclude_group=None):
+        # 실제 구현에서는 get_playlist와 get_random_track_from_playlist를 활용하세요.
+        available = df.copy()
+        if exclude_group is not None:
+            available = available[available['group_name'] != exclude_group['group_name']]
+        return available.sample(n=1).iloc[0]
+
+    # 비슷한 그룹 선택 함수
     def select_similar_group(df, group, threshold=0.5):
         subscribers = group['youtube_subscribers']
         range_min = subscribers * (1 - threshold)
@@ -100,106 +199,133 @@ def group_selection():
             df_no_group['diff'] = (df_no_group['youtube_subscribers'] - subscribers).abs()
             similar_df = df_no_group.sort_values(by='diff').head(5)
         return similar_df.sample(n=1).iloc[0]
-
-    # 랜덤 방식
-    st.markdown("**① 랜덤 그룹 선택**")
-    if st.button("Select Random Groups"):
-        group_A = data.sample(n=1).iloc[0]
-        group_B = select_similar_group(data, group_A)
-        st.session_state.groups = (group_A, group_B)
-        st.session_state.groups_selected = True
-        st.session_state.confirmed = False
-
+    
+    threshold_val = st.slider("유사 그룹 선택 임계값 (0.0 ~ 1.0)", 0.0, 1.0, 0.5, step=0.05)
+    min_sub = st.slider("최소 구독자 수", 0, int(data['youtube_subscribers'].max()), key="min_sub")
+    
     st.divider()
 
-    # 최소 구독자 조건 방식
-    st.markdown("**② 최소 구독자 수로 선택**")
-    min_subs = st.slider("최소 Youtube 구독자 수", 0, int(data['youtube_subscribers'].max()), step=1000)
-    matching_count = len(data[data['youtube_subscribers'] >= min_subs])
-    st.write(f"조건을 만족하는 그룹 수: **{matching_count}개**")
-    if st.button("Select Groups with Min Subscribers"):
-        df_filtered = data[data['youtube_subscribers'] >= min_subs]
-        if df_filtered.empty:
-            st.error("조건을 만족하는 그룹이 없습니다.")
-        else:
-            group_A = df_filtered.sample(n=1).iloc[0]
-            group_B = select_similar_group(df_filtered, group_A)
-            st.session_state.groups = (group_A, group_B)
-            st.session_state.groups_selected = True
-            st.session_state.confirmed = False
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### Group A 선택")
+        # 1. 랜덤 선택 (Group A)
+        
+        if st.button("Group A - 랜덤 선택"):
+            if(st.session_state.group_B is not None):
+                st.session_state.group_A = select_similar_group(data, st.session_state.group_B, threshold_val)
+            else:
+                st.session_state.group_A = data.sample(n=1).iloc[0]
+            st.success(f"Group A 선택됨: {st.session_state.group_A['group_name']}")
 
-    st.divider()
+        # 2. 최소 구독자 조건 선택 (Group A)
+        if st.button("Group A - 최소 구독자 조건 선택"):
+            result = select_by_min_sub(data, min_sub)
+            if result is not None:
+                st.session_state.group_A = result
+                st.success(f"Group A 선택됨: {st.session_state.group_A['group_name']}")
+            else:
+                st.error("조건을 만족하는 그룹이 없습니다.")
 
-    # 검색을 통한 그룹 선택
-    st.markdown("**③ 그룹 이름 검색으로 선택**")
-    keyword = st.text_input("Search Group Name")
-    search_results = data[data['group_name'].str.contains(keyword, case=False, na=False)]
-    if not search_results.empty and keyword:
-        selected_name = st.selectbox("검색된 그룹 선택:", search_results['group_name'].tolist())
-        if st.button("Select Searched Group"):
-            group_A = data[data['group_name'] == selected_name].iloc[0]
-            group_B = select_similar_group(data, group_A)
-            st.session_state.groups = (group_A, group_B)
-            st.session_state.groups_selected = True
-            st.session_state.confirmed = False
-    elif keyword:
-        st.write("검색된 그룹이 없습니다.")
+        # 3. 그룹 이름 검색 선택 (Group A)
+        keyword_A = st.text_input("Group A - 그룹 검색 키워드", key="keyword_A")
+        if keyword_A:
+            search_results_A = data[data['group_name'].str.contains(keyword_A, case=False, na=False)]
+            if not search_results_A.empty:
+                selected_name_A = st.selectbox("검색 결과에서 Group A 선택", search_results_A['group_name'].tolist(), key="selected_name_A")
+                if st.button("Group A - 검색 선택"):
+                    result = select_by_search(data, keyword_A, selected_name_A)
+                    if result is not None:
+                        st.session_state.group_A = result
+                        st.success(f"Group A 선택됨: {st.session_state.group_A['group_name']}")
+                    else:
+                        st.error("검색 결과에서 선택할 수 없습니다.")
+            else:
+                st.write("검색 결과가 없습니다.")
 
-    st.divider()
+        # 4. 유튜브 플레이리스트 선택 (Group A)
+        playlist_id_A = st.text_input("Group A - 유튜브 플레이리스트 ID", key="playlist_id_A", value="PL4fGSI1pDJn5S09aId3dUGp40ygUqmPGc")
+        if st.button("Group A - 플레이리스트에서 선택"):
+            st.session_state.group_A = select_by_playlist(data, playlist_id_A)
+            st.success(f"Group A 선택됨: {st.session_state.group_A['group_name']}")
 
-    # 유튜브 플레이리스트에서 선택
-    st.markdown("**④ 유튜브 플레이리스트에서 선택**")
-    playlist_id = st.text_input("Youtube Playlist ID", value="PL4fGSI1pDJn5S09aId3dUGp40ygUqmPGc")
-    if st.button("Select Groups from Playlist"):
-        tracks = get_playlist(playlist_id)
-        st.session_state.tracks = tracks
-        data = st.session_state.data
-        group_A = get_random_track_from_playlist(data, tracks)
-        group_B = get_random_track_from_playlist(data, tracks)
-        st.session_state.groups = (group_A, group_B)
-        st.session_state.groups_selected = True
-        st.session_state.confirmed = False
-
-def display_groups():
-    if st.session_state.groups_selected and st.session_state.groups:
-        group_A, group_B = st.session_state.groups
-        print(group_A)
-        st.subheader("Selected Groups")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            response_A = requests.get(group_A["image"].split("/scale-to-width-down")[0])
+        if st.session_state.group_A is not None:        
+            response_A = requests.get(st.session_state.group_A["image"].split("/scale-to-width-down")[0])
             if response_A.status_code == 200:
                 img_A = Image.open(BytesIO(response_A.content))
                 st.image(img_A, width=350)
             else:
                 st.error("Failed to load image for Group A.")
-            st.write(f"**Group A:** {group_A['group_name']}")
-            st.write(f"**Subscribers:** {group_A['youtube_subscribers']:,}")
+            st.write(f"**Group A:** {st.session_state.group_A['group_name']}")
+            st.write(f"**Subscribers:** {st.session_state.group_A['youtube_subscribers']:,}")
 
-            if st.button("Change Group A"):
-                new_group_A = reselect_group(st.session_state.data, group_B)
-                st.session_state.groups = (new_group_A, group_B)
-                st.session_state.confirmed = False
+            if st.session_state.group_A is not None and st.session_state.group_B is not None:
+                st.session_state.groups_selected = True
+        
 
-        with col2:
-            response_B = requests.get(group_B["image"].split("/scale-to-width-down")[0])
+    with col2:
+        st.markdown("#### Group B 선택")
+        # Group B 선택 시 Group A와 중복되지 않도록 available 데이터 필터링
+        exclude = st.session_state.group_A
+
+        # 1. 랜덤 선택 (Group B)
+        if st.button("Group B - 랜덤 선택"):
+            if(st.session_state.group_A is not None):
+                st.session_state.group_B = select_similar_group(data, st.session_state.group_A, threshold_val)
+            else:
+                st.session_state.group_B = data.sample(n=1).iloc[0]
+            st.success(f"Group B 선택됨: {st.session_state.group_B['group_name']}")
+
+        # 2. 최소 구독자 조건 선택 (Group B)
+        if st.button("Group B - 최소 구독자 조건 선택"):
+            result = select_by_min_sub(data, min_sub, exclude_group=exclude)
+            if result is not None:
+                st.session_state.group_B = result
+                st.success(f"Group B 선택됨: {st.session_state.group_B['group_name']}")
+            else:
+                st.error("조건을 만족하는 그룹이 없습니다.")
+
+        # 3. 그룹 이름 검색 선택 (Group B)
+        keyword_B = st.text_input("Group B - 그룹 검색 키워드", key="keyword_B")
+        if keyword_B:
+            search_results_B = data[data['group_name'].str.contains(keyword_B, case=False, na=False)]
+            if not search_results_B.empty:
+                selected_name_B = st.selectbox("검색 결과에서 Group B 선택", search_results_B['group_name'].tolist(), key="selected_name_B")
+                if st.button("Group B - 검색 선택"):
+                    result = select_by_search(data, keyword_B, selected_name_B, exclude_group=exclude)
+                    if result is not None:
+                        st.session_state.group_B = result
+                        st.success(f"Group B 선택됨: {st.session_state.group_B['group_name']}")
+                    else:
+                        st.error("검색 결과에서 선택할 수 없습니다.")
+            else:
+                st.write("검색 결과가 없습니다.")
+
+        # 4. 유튜브 플레이리스트 선택 (Group B)
+        playlist_id_B = st.text_input("Group B - 유튜브 플레이리스트 ID", key="playlist_id_B", value="PL4fGSI1pDJn5S09aId3dUGp40ygUqmPGc")
+        if st.button("Group B - 플레이리스트에서 선택"):
+            st.session_state.group_B = select_by_playlist(data, playlist_id_B, exclude_group=exclude)
+            st.success(f"Group B 선택됨: {st.session_state.group_B['group_name']}")
+
+        if st.session_state.group_B is not None:
+            response_B = requests.get(st.session_state.group_B["image"].split("/scale-to-width-down")[0])
             if response_B.status_code == 200:
                 img_B = Image.open(BytesIO(response_B.content))
                 st.image(img_B, width=350)
             else:
                 st.error("Failed to load image for Group B.")
-            st.write(f"**Group B:** {group_B['group_name']}")
-            st.write(f"**Subscribers:** {group_B['youtube_subscribers']:,}")
+            st.write(f"**Group B:** {st.session_state.group_B['group_name']}")
+            st.write(f"**Subscribers:** {st.session_state.group_B['youtube_subscribers']:,}")
+        
+            if st.session_state.group_A is not None and st.session_state.group_B is not None:
+                st.session_state.groups_selected = True
 
-            if st.button("Change Group B"):
-                new_group_B = reselect_group(st.session_state.data, group_A)
-                st.session_state.groups = (group_A, new_group_B)
-                st.session_state.confirmed = False
-
+def display_groups():
+    if st.session_state.groups_selected:
+        
         if not st.session_state.confirmed and st.button("Confirm Selection"):
             st.session_state.confirmed = True
+            st.session_state.groups = (st.session_state.group_A, st.session_state.group_B)
             st.success("Groups confirmed!")
 
 
@@ -475,12 +601,15 @@ def quest_entries_section():
                 appended_rows = append_new_quests(quests_data)
                 st.success(f"Quests appended at rows: {appended_rows}")
 
+sys.stdout = StreamlitLogger()
+
 # 메인 함수: 각 단계별 함수들을 순차적으로 호출
 def main():
     st.title("Starglow Poll Maker")
     initialize_session_state()
     display_sidebar()  # 사이드바에 진행 단계 표시 및 리셋 버튼
 
+    group_listup()
     group_selection()
     display_groups()
     build_prompt_step()
