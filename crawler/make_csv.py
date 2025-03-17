@@ -36,7 +36,7 @@ def get_data(groups, batch_size=10):
 
     return results
 
-def get_groups():
+def get_groups(output_file="groups_data.csv"):
     boys_urls = [
         "https://kpop.fandom.com/wiki/Category:Male_groups",
         "https://kpop.fandom.com/wiki/Category:Male_groups?from=A",
@@ -115,7 +115,6 @@ def get_groups():
     print(df.head())
     
     # CSV 파일로 저장 (UTF-8 BOM 포함)
-    output_file = "groups_data.csv"
     df.to_csv(output_file, index=False, encoding="utf-8-sig")
     print(f"데이터가 {output_file} 파일로 저장되었습니다.")
     
@@ -128,14 +127,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def get_youtube():    
+def get_youtube(input_file="groups_data.csv", output_file="groups_data_updated.csv"):    
     API_KEY = os.getenv("API_KEY")
     youtube = build("youtube", "v3", developerKey=API_KEY)
     
     # 1. CSV 데이터 불러오기
-    df = pd.read_csv("groups_data.csv")
+    df = pd.read_csv(input_file)
     try:
-        updated_df = pd.read_csv("groups_data_updated.csv")
+        updated_df = pd.read_csv(output_file)
         if not updated_df.empty:
             df = updated_df
     except Exception:
@@ -209,7 +208,7 @@ def get_youtube():
             df.at[idx, "group_name"] = processed_name
 
         # 중간 결과를 CSV에 저장 (실패 시에도 저장)
-        df.to_csv("groups_data_updated.csv", index=False, encoding="utf-8-sig")
+        df.to_csv(output_file, index=False, encoding="utf-8-sig")
         print(f"Row {idx} processed: {df.at[idx, 'group_name']}")
 
     print("Processing complete.")
