@@ -2,11 +2,9 @@ from ytmusicapi import YTMusic
 import random
 import re
 from math import ceil
-
-CHANNEL_PATTERN = re.compile(r'/channel/([^/?]+)')
-USER_PATTERN = re.compile(r'/user/([^/?]+)')
-CUSTOM_PATTERN = re.compile(r'/c/([^/?]+)')
-HANDLE_PATTERN = re.compile(r'/@([^/?]+)')
+import requests
+from bs4 import BeautifulSoup
+import re
 
 def process_batch_requests(youtube, requests):
     if not requests:
@@ -26,92 +24,55 @@ def process_batch_requests(youtube, requests):
     batch.execute()
     return results
 
-def get_youtube_channel_ids_optimized(youtube, youtube_links):
-    channel_ids = {}
-    api_links = []
+CHANNEL_PATTERN = re.compile(r'(?:https?://)?(?:www\.)?youtube\.com/channel/([^/?]+)')
+CUSTOM_PATTERN = re.compile(r'/c/([^/?]+)')
+USER_PATTERN = re.compile(r'/user/([^/?]+)')
+HANDLE_PATTERN = re.compile(r'youtube\.com/@([^/?]+)')
+def is_valid_youtube_url(url):
+    return bool(re.match(
+        r'(https?://)?(www\.)?(youtube\.com)/(channel/UC[\w-]{22,}|user/[\w-]+|c/[\w-]+|@[\w-]+)', 
+        url
+    ))
 
-    # 먼저 직접 처리 가능한 링크와 API 요청이 필요한 링크로 분리합니다.
-    for link in youtube_links:
-        if link is None:
-            continue
-        m = CHANNEL_PATTERN.search(link)
-        if m:
-            channel_ids[link] = m.group(1)
-        else:
-            api_links.append(link)
+def get_youtube_channel_id(url, timeout=10):
+    headers = {"User-Agent": "Mozilla/5.0"}
+    CHANNEL_PATTERN = re.compile(r'/channel/([^/?]+)')
+
+    if not url or not is_valid_youtube_url(url):
+        print(f"Invalid URL format: {url}")
+        return None
+
+    try:
+        match = CHANNEL_PATTERN.search(url)
+        if match:
+            return match.group(1)
+
+        response = requests.get(url, headers=headers, timeout=timeout)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        canonical_link = soup.find("link", rel="canonical")
+        if canonical_link and 'href' in canonical_link.attrs:
+            match = CHANNEL_PATTERN.search(canonical_link['href'])
+            if match:
+                return match.group(1)
+    except requests.RequestException as e:
+        print(f"Request error ({url}): {e}")
+    except Exception as e:
+        print(f"Parsing error ({url}): {e}")
     
-    # API 호출이 필요한 링크에 대해서만 기존 함수 활용
-    if api_links:
-        api_results = get_youtube_channel_ids(youtube, api_links)
-        channel_ids.update(api_results)
-    
-    return channel_ids
+    return None
 
-def get_youtube_channel_ids(youtube, youtube_links):
-    channel_ids = {}
-    batch_requests = {}
-    # 요청과 링크 인덱스를 매핑할 딕셔너리 (req_id -> 링크 인덱스)
-    link_map = {}
-
-    for idx, link in enumerate(youtube_links):
-        # 패턴 1: /channel/ 형태 -> 바로 처리
-        m = CHANNEL_PATTERN.search(link)
-        if m:
-            channel_ids[link] = m.group(1)
+def get_youtube_channel_ids(youtube_links):
+    channel_ids_mapping = {}
+    for url in youtube_links:
+        if not url:
+            channel_ids_mapping[url] = None
             continue
 
-        req_id = f"req_{idx}"
-        link_map[req_id] = link
+        channel_id = get_youtube_channel_id(url)
+        channel_ids_mapping[url] = channel_id
 
-        # 패턴 2: /user/ 형태
-        m = USER_PATTERN.search(link)
-        if m:
-            username = m.group(1)
-            batch_requests[req_id] = youtube.channels().list(forUsername=username, part="id")
-            continue
-
-        # 패턴 3: /c/ 형태 (커스텀 URL)
-        m = CUSTOM_PATTERN.search(link)
-        if m:
-            custom_name = m.group(1)
-            batch_requests[req_id] = youtube.search().list(q=custom_name, type="channel", part="snippet", maxResults=1)
-            continue
-
-        # 패턴 4: /@ 형태 (채널 핸들 URL)
-        m = HANDLE_PATTERN.search(link)
-        if m:
-            handle = m.group(1)
-            batch_requests[req_id] = youtube.search().list(q=handle, type="channel", part="snippet", maxResults=1)
-            continue
-
-        # 어떤 패턴에도 해당하지 않으면 None 처리
-        channel_ids[link] = None
-
-    # 배치 요청 실행
-    if batch_requests:
-        batch_results = process_batch_requests(youtube, batch_requests)
-        for req_id, result in batch_results.items():
-            link = link_map.get(req_id)
-            if not link:
-                continue
-            if "exception" in result:
-                channel_ids[link] = None
-            else:
-                items = result.get("items", [])
-                if items:
-                    # /user/ 패턴: 응답 아이템에 "id" 필드가 있음
-                    if "id" in items[0]:
-                        channel_ids[link] = items[0]["id"]
-                    # /c/ 또는 /@ 패턴: snippet 내에 channelId가 있음
-                    elif "snippet" in items[0] and "channelId" in items[0]["snippet"]:
-                        channel_ids[link] = items[0]["snippet"]["channelId"]
-                    else:
-                        channel_ids[link] = None
-                else:
-                    channel_ids[link] = None
-
-    return channel_ids
-
+    return channel_ids_mapping
 
 def get_youtube_stats_batch(youtube, channel_ids):
     from math import ceil
@@ -144,8 +105,16 @@ def get_youtube_stats_batch(youtube, channel_ids):
     return stats_results
 
 
-def get_playlist(playlist_id):
+def get_playlist(playlist_url):
+    def extract_playlist_id(url):
+        match = re.search(r"[?&]list=([a-zA-Z0-9_-]+)", url)
+        return match.group(1) if match else None
+
     ytm = YTMusic()
+    playlist_id = extract_playlist_id(playlist_url)
+    if not playlist_id:
+        raise ValueError("Invalid playlist URL.")
+    
     playlist_info = ytm.get_playlist(playlist_id)
 
     tracks = playlist_info.get('tracks', [])
@@ -177,3 +146,4 @@ def get_random_track_from_playlist(data, tracks, max_attempts=20):
 
     return None
 
+    

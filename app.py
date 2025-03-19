@@ -199,12 +199,11 @@ def group_selection():
                 return None
             return available[available['group_name'] == selected_name].iloc[0]
 
-        def select_by_playlist(df, playlist_id, exclude_group=None):
+        def select_by_playlist(df, tracks, exclude_group=None):
             available_data = df.copy()
             if exclude_group is not None:
                 available_data = available_data[available_data['group_name'] != exclude_group['group_name']]
 
-            tracks = get_playlist(playlist_id)
             matched_info = get_random_track_from_playlist(available_data, tracks)
             if matched_info is None:
                 raise ValueError("일치하는 그룹을 찾을 수 없습니다.")
@@ -230,6 +229,8 @@ def group_selection():
         
         threshold_val = st.slider("유사 그룹 선택 임계값 (0.0 ~ 1.0)", 0.0, 1.0, 0.5, step=0.05)
         min_sub = st.slider("최소 구독자 수", 0, int(data['youtube_subscribers'].max()), key="min_sub")
+        playlist_id = st.text_input("유튜브 플레이리스트 ID", key="playlist_id", value="https://music.youtube.com/playlist?list=PL4fGSI1pDJn5S09aId3dUGp40ygUqmPGc")
+        tracks = get_playlist(playlist_id)
         
         st.divider()
 
@@ -272,9 +273,8 @@ def group_selection():
                     st.write("검색 결과가 없습니다.")
 
             # 4. 유튜브 플레이리스트 선택 (Group A)
-            playlist_id_A = st.text_input("Group A - 유튜브 플레이리스트 ID", key="playlist_id_A", value="PL4fGSI1pDJn5S09aId3dUGp40ygUqmPGc")
             if st.button("Group A - 플레이리스트에서 선택"):
-                st.session_state.group_A = select_by_playlist(data, playlist_id_A)
+                st.session_state.group_A = select_by_playlist(data, tracks)
                 st.success(f"Group A 선택됨: {st.session_state.group_A['group_name']}")
 
             if st.session_state.group_A is not None:        
@@ -336,9 +336,8 @@ def group_selection():
                     st.write("검색 결과가 없습니다.")
 
             # 4. 유튜브 플레이리스트 선택 (Group B)
-            playlist_id_B = st.text_input("Group B - 유튜브 플레이리스트 ID", key="playlist_id_B", value="PL4fGSI1pDJn5S09aId3dUGp40ygUqmPGc")
             if st.button("Group B - 플레이리스트에서 선택"):
-                st.session_state.group_B = select_by_playlist(data, playlist_id_B, exclude_group=exclude)
+                st.session_state.group_B = select_by_playlist(data, tracks, exclude_group=exclude)
                 st.success(f"Group B 선택됨: {st.session_state.group_B['group_name']}")
 
             if st.session_state.group_B is not None:
