@@ -620,7 +620,7 @@ def append_data_modify_step():
                         "Amount": ""
                     },
                     {
-                        "Date": "",
+                        "Date": date_start,
                         "no": "",
                         "Quest Type": "Youtube",
                         "Tags": "",
@@ -631,7 +631,7 @@ def append_data_modify_step():
                         "Amount": ""
                     },
                     {
-                        "Date": "",
+                        "Date": date_start,
                         "no": "",
                         "Quest Type": "Website",
                         "Tags": "",
@@ -642,7 +642,7 @@ def append_data_modify_step():
                         "Amount": "800"
                     },
                     {
-                        "Date": "",
+                        "Date": date_start,
                         "no": "",
                         "Quest Type": sns_A_type,
                         "Tags": "",
@@ -653,7 +653,7 @@ def append_data_modify_step():
                         "Amount": "800"
                     },
                     {
-                        "Date": "",
+                        "Date": date_start,
                         "no": "",
                         "Quest Type": sns_B_type,
                         "Tags": "",

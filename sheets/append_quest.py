@@ -1,4 +1,3 @@
-
 import os
 import json
 import gspread
@@ -16,14 +15,30 @@ def append_new_quests(quests_data=[]):
     header = sheet.row_values(1)
     header_map = {col: idx + 1 for idx, col in enumerate(header)}
     col_values = sheet.col_values(header_map.get('Quest Title', 1))
-    target_row = len(col_values) + 2
+    start_row = len(col_values) + 1
+    
+    # 배치 업데이트를 위한 데이터 준비
+    batch_data = []
     appended_rows = []
-    for quest in quests_data:
+    
+    for row_idx, quest in enumerate(quests_data):
+        current_row = start_row + row_idx
+        appended_rows.append(current_row)
+        
         for key, value in quest.items():
             if key in header_map:
+                col_idx = header_map[key]
                 if isinstance(value, list):
                     value = ';'.join(value)
-                sheet.update_cell(target_row, header_map[key], value)
-        appended_rows.append(target_row)
-        target_row += 1
+                # A1 표기법으로 셀 위치 지정
+                cell = gspread.utils.rowcol_to_a1(current_row, col_idx)
+                batch_data.append({
+                    'range': cell,
+                    'values': [[value]]
+                })
+    
+    # 한 번의 요청으로 모든 데이터 업데이트
+    if batch_data:
+        sheet.batch_update(batch_data)
+    
     return appended_rows
