@@ -210,6 +210,34 @@ def group_selection():
             
             return matched_info
         
+        def select_by_manual_input(group_letter):
+            group_name = st.text_input(f"Group {group_letter} - 아티스트 이름", key=f"manual_group_name_{group_letter}")
+            image_url = st.text_input(f"Group {group_letter} - 아티스트 이미지 URL", key=f"manual_image_url_{group_letter}")
+            if image_url:
+                try:
+                    response = requests.get(image_url.split("/scale-to-width-down")[0])
+                    if response.status_code == 200:
+                        img = Image.open(BytesIO(response.content))
+                        st.image(img, width=350)
+                    else:
+                        st.error("이미지를 불러올 수 없습니다.")
+                except Exception as e:
+                    st.error(f"이미지 로드 중 오류 발생: {str(e)}")
+                    
+            sns_link = st.text_input(f"Group {group_letter} - SNS URL", key=f"manual_sns_{group_letter}")
+            
+            if group_name and image_url:
+                new_group = {
+                    'group_name': group_name,
+                    'image': image_url,
+                    'sns_link': sns_link,
+                    'youtube_subscribers': 0,
+                    'song_title': '',
+                    'song_thumbnail': '',
+                    'song_link': ''
+                }
+                return new_group
+            return None        
 
         # 비슷한 그룹 선택 함수
         def select_similar_group(df, group, threshold=0.5):
@@ -234,8 +262,35 @@ def group_selection():
         
         st.divider()
 
+        # 직접 입력 섹션
+        st.markdown("#### 아티스트 직접 입력")
+        with st.form("manual_input_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("##### Group A")
+                group_A = select_by_manual_input("A")
+            
+            with col2:
+                st.markdown("##### Group B")
+                group_B = select_by_manual_input("B")
+            
+            submitted = st.form_submit_button("아티스트 입력 완료")
+            if submitted:
+                if group_A and group_B:
+                    st.session_state.group_A = group_A
+                    st.session_state.group_B = group_B
+                    st.session_state.sns_A = group_A['sns_link']
+                    st.session_state.sns_B = group_B['sns_link']
+                    st.session_state.groups_selected = True
+                    st.success(f"Group A 입력됨: {group_A['group_name']}")
+                    st.success(f"Group B 입력됨: {group_B['group_name']}")
+                else:
+                    st.error("모든 필수 정보를 입력해주세요.")
+        st.divider()
+
+        # 기존 선택 방법 섹션
+        st.markdown("#### 기존 아티스트 선택")
         col1, col2 = st.columns(2)
-        
         with col1:
             st.markdown("#### Group A 선택")
             # 1. 랜덤 선택 (Group A)
